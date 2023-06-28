@@ -1,5 +1,7 @@
 # Load the object and required packages.
 library(Seurat)
+library(magrittr)
+library(scPred)
 RNA <- readRDS("Ts65Dn_OPC_Senescence_RNA_Object.rds")
 
 # Create new columns for the condition and replicate.
@@ -53,6 +55,51 @@ VlnPlot(RNA, features = c([cell markers])
 FeaturePlot(RNA, features = c([cell markers])
 new.cluster.ids <- c([cluster IDs) <- levels(RNA)
 RNA <- RenameIdents(RNA, new.cluster.ids)
+
+# Confirm cluster annotation for all cell types via scPred.
+reference <- ss.seurat
+rm(ss.seurat)
+reference_neuronal <- subset(reference, subset = class_label %in% c('Glutamatergic','GABAergic'))
+all_cortex_cells <- c('L5 PT CTX','L5 IT CTX','L4/5 IT CTX','L6 IT CTX','L6 CT CTX',
+                      'L5/6 NP CTX','L2/3 IT CTX','Car3','L6b CTX','Pvalb','Vip','Lamp5',
+                      'Sst','Sst Chodl','Sncg','Meis2')
+reference_neuronal <- subset(reference, subset = subclass_label %in% all_cortex_cells)
+reference_non_neuronal <- subset(reference, subset = class_label %in% 'Non-Neuronal')
+plot_probabilities(reference_neuronal)
+reference <- reference %>% 
+  NormalizeData() %>% 
+  FindVariableFeatures() %>% 
+  ScaleData() %>% 
+  RunPCA() %>% 
+  RunUMAP(dims = 1:30)
+reference <- getFeatureSpace(reference, "subclass_label")
+reference <- trainModel(reference)
+reference <- trainModel(reference, model = "mda", reclassify = c("Micro-PVM"))
+plot_probabilities(reference)
+query_RNA <- scPredict(RNA, reference)
+
+# Confirm cluster annotation for Inhibitory and Excitatory subtypes via scPred.
+inhibitory_cortex_cells <- c('Pvalb','Vip','Lamp5','Sst','Sst Chodl','Sncg','Meis2')
+excitatory_cortex_cells <- c('L5 PT CTX','L5 IT CTX','L4/5 IT CTX','L6 IT CTX','L6 CT CTX',
+                             'L5/6 NP CTX','L2/3 IT CTX','Car3','L6b CTX')
+reference_inhibitory <- subset(reference, subset = subclass_label %in% inhibitory_cortex_cells)
+reference_excitatory <- subset(reference, subset = subclass_label %in% excitatory_cortex_cells)
+plot_probabilities(reference_excitatory)
+plot_probabilities(reference_inhibitory)
+reference_inhibitory <- reference_inhibitory %>% 
+  NormalizeData() %>% 
+  FindVariableFeatures() %>% 
+  ScaleData() %>% 
+  RunPCA() %>% 
+  RunUMAP(dims = 1:30)
+reference_excitatory <- reference_excitatory %>% 
+  NormalizeData() %>% 
+  FindVariableFeatures() %>% 
+  ScaleData() %>% 
+  RunPCA() %>% 
+  RunUMAP(dims = 1:30)
+query_RNA_Inhibitory <- scPredict(RNA_Inhibitory, reference_inhibitory)
+query_RNA_Excitatory <- scPredict(RNA_Inhibitory, reference_excitatory)
 
 # Create subclusters for inhibitory and excitatory neurons (same code for both; change idents = Inhibitory or Excitatory).
 RNA_Inhibitory <- subset(x = RNA, idents = "Inhibitory Neurons")
